@@ -21,6 +21,25 @@ provider "google" {
   zone    = var.zone
 }
 
+# ── Secret Manager ───────────────────────────────────────────────────
+resource "google_secret_manager_secret" "grafana_password" {
+  secret_id = "grafana-password"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "grafana_password" {
+  secret      = google_secret_manager_secret.grafana_password.id
+  secret_data = var.grafana_password
+}
+
+resource "google_secret_manager_secret_iam_member" "vm_access" {
+  secret_id = google_secret_manager_secret.grafana_password.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.service_account_email}"
+}
+
 # ── Static External IP ──────────────────────────────────────────────
 resource "google_compute_address" "monitoring_ip" {
   name   = "${var.instance_name}-ip"
@@ -79,4 +98,6 @@ resource "google_compute_instance" "monitoring_vm" {
     env     = "portfolio"
     purpose = "monitoring"
   }
+
+  depends_on = [google_secret_manager_secret_version.grafana_password]
 }
