@@ -1,0 +1,78 @@
+services:
+  # ── FastAPI Application ──────────────────────────────────────────
+  app:
+    build:
+      context: ../app
+      dockerfile: Dockerfile
+    container_name: fastapi-app
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring
+
+  # ── Prometheus ───────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+    restart: unless-stopped
+    depends_on:
+      - app
+    networks:
+      - monitoring
+
+  # ── Grafana ──────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/fastapi-dashboard.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring
+
+  # ── Node Exporter (VM host metrics) ─────────────────────────────
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node-exporter
+    command:
+      - "--path.rootfs=/host"
+    pid: host
+    volumes:
+      - "/:/host:ro,rslave"
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  monitoring:
+    driver: bridge
