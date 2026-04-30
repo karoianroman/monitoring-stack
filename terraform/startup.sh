@@ -27,7 +27,7 @@ systemctl enable docker
 systemctl start docker
 
 # ── 3. Clone project ──────────────────────────────────────────────
-REPO_URL="https://github.com/YOUR_USERNAME/monitoring-stack.git"
+REPO_URL="https://github.com/karoianroman/monitoring-stack.git"
 APP_DIR="/opt/monitoring-stack"
 
 git clone "$REPO_URL" "$APP_DIR" || {
