@@ -24,7 +24,9 @@ provider "google" {
 # ── Secret Manager ───────────────────────────────────────────────────
 resource "google_secret_manager_secret" "grafana_user" {
   secret_id = "grafana-user"
-  replication { auto {} }
+  replication {
+    auto {}
+  }
 }
 
 resource "google_secret_manager_secret_version" "grafana_user" {
@@ -46,6 +48,12 @@ resource "google_secret_manager_secret_version" "grafana_password" {
 
 resource "google_secret_manager_secret_iam_member" "vm_access" {
   secret_id = google_secret_manager_secret.grafana_password.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.service_account_email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vm_access_user" {
+  secret_id = google_secret_manager_secret.grafana_user.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${var.service_account_email}"
 }
@@ -109,5 +117,8 @@ resource "google_compute_instance" "monitoring_vm" {
     purpose = "monitoring"
   }
 
-  depends_on = [google_secret_manager_secret_version.grafana_password]
+  depends_on = [
+    google_secret_manager_secret_version.grafana_password,
+    google_secret_manager_secret_version.grafana_user,
+  ]
 }

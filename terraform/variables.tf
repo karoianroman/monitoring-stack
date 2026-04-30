@@ -41,7 +41,7 @@ variable "allowed_cidr_blocks" {
 }
 
 variable "grafana_user" {
-  description = "Grafana admin username"
+  description = "Grafana admin username — передається в Secret Manager"
   type        = string
   sensitive   = true
 }

@@ -187,7 +187,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USERNAME}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
@@ -220,18 +220,28 @@ networks:
     driver: bridge
 COMPOSEEOF
 
-# ── 7. Read password from Secret Manager ──────────────────────────
-echo "Reading Grafana password from Secret Manager..."
-GRAFANA_ADMIN_PASSWORD=$(curl -s \
-  -H "Authorization: Bearer $(curl -s -H 'Metadata-Flavor: Google' \
-    http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token \
-    | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')" \
-  "https://secretmanager.googleapis.com/v1/projects/repo-490410/secrets/grafana-password/versions/latest:access" \
-  | python3 -c 'import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode())')
+# ── 7. Read secrets from Secret Manager ──────────────────────────
+echo "Reading secrets from Secret Manager..."
+
+TOKEN=$(curl -s -H "Metadata-Flavor: Google" \
+  http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+
+read_secret() {
+  curl -s \
+    -H "Authorization: Bearer $TOKEN" \
+    "https://secretmanager.googleapis.com/v1/projects/repo-490410/secrets/$1/versions/latest:access" \
+    | python3 -c 'import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode())'
+}
+
+GRAFANA_ADMIN_USERNAME=$(read_secret "grafana-user")
+GRAFANA_ADMIN_PASSWORD=$(read_secret "grafana-password")
 
 # ── 8. Start the stack ────────────────────────────────────────────
 cd "$APP_DIR/monitoring"
-GRAFANA_ADMIN_PASSWORD="$GRAFANA_ADMIN_PASSWORD" docker compose up -d --build
+GRAFANA_ADMIN_USERNAME="$GRAFANA_ADMIN_USERNAME" \
+GRAFANA_ADMIN_PASSWORD="$GRAFANA_ADMIN_PASSWORD" \
+docker compose up -d --build
 
 echo "=== Stack started: $(date) ==="
 EXTERNAL_IP=$(curl -s -H "Metadata-Flavor: Google" \
