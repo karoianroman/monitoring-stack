@@ -22,6 +22,16 @@ provider "google" {
 }
 
 # ── Secret Manager ───────────────────────────────────────────────────
+resource "google_secret_manager_secret" "grafana_user" {
+  secret_id = "grafana-user"
+  replication { auto {} }
+}
+
+resource "google_secret_manager_secret_version" "grafana_user" {
+  secret      = google_secret_manager_secret.grafana_user.id
+  secret_data = var.grafana_user
+}
+
 resource "google_secret_manager_secret" "grafana_password" {
   secret_id = "grafana-password"
   replication {

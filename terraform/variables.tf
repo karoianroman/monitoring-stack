@@ -40,6 +40,12 @@ variable "allowed_cidr_blocks" {
   default     = ["0.0.0.0/0"]
 }
 
+variable "grafana_user" {
+  description = "Grafana admin username"
+  type        = string
+  sensitive   = true
+}
+
 variable "grafana_password" {
   description = "Grafana admin password — передається в Secret Manager"
   type        = string
