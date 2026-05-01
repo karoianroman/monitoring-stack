@@ -30,7 +30,7 @@ GCP (europe-west1)
 
 ## 📸 Screenshots
 
-### terraform apply — 9 resources created in 19s
+### terraform apply — 9 resources created
 ![Terraform Apply](docs/terraform-apply.png)
 
 ### Grafana Dashboard — live metrics under load
