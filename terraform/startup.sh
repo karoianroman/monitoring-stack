@@ -173,7 +173,7 @@ dashboard = {
     {
       "id": 2, "title": "Error Rate (%)", "type": "stat",
       "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
-      "targets": [{"expr": 'sum(rate(http_requests_total{job="fastapi-app",status=~"5.."}[1m])) / sum(rate(http_requests_total{job="fastapi-app"}[1m])) * 100', "legendFormat": "error %"}],
+      "targets": [{"expr": 'sum(rate(http_requests_total{job="fastapi-app",status="5xx"}[1m])) / sum(rate(http_requests_total{job="fastapi-app"}[1m])) * 100', "legendFormat": "error %"}],
       "options": {"colorMode": "background", "reduceOptions": {"calcs": ["lastNotNull"]}},
       "fieldConfig": {"defaults": {"unit": "percent", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": None}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}}
     },
