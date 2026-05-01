@@ -8,7 +8,7 @@ Production-ready observability stack provisioned with Terraform on GCP. Monitors
 
 ![Grafana Dashboard](docs/grafana-dashboard.png)
 
-*Real-time metrics: 10.7 req/s, 10.3% error rate, 479ms P95 latency*
+*Real-time metrics: 9.74 req/s, 9.24% error rate, 477ms P95 latency*
 
 ---
 
