@@ -31,14 +31,14 @@ APP_DIR="/opt/monitoring-stack"
 mkdir -p "$APP_DIR"/{app,monitoring/prometheus,monitoring/grafana/provisioning/{datasources,dashboards}}
 
 # ── 4. Write app files ────────────────────────────────────────────
-cat > "$APP_DIR/app/requirements.txt" << 'PYEOF'
+cat > "$APP_DIR/app/requirements.txt" << 'REQEOF'
 fastapi==0.115.5
 uvicorn==0.32.1
 prometheus-fastapi-instrumentator==7.0.0
 prometheus-client==0.21.1
-PYEOF
+REQEOF
 
-cat > "$APP_DIR/app/Dockerfile" << 'DOCKEREOF'
+cat > "$APP_DIR/app/Dockerfile" << 'DKREOF'
 FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
@@ -46,7 +46,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-DOCKEREOF
+DKREOF
 
 cat > "$APP_DIR/app/main.py" << 'PYEOF'
 from fastapi import FastAPI, HTTPException
@@ -103,7 +103,7 @@ def slow_endpoint():
     return {"message": "slow response"}
 PYEOF
 
-# ── 5. Write monitoring configs ───────────────────────────────────
+# ── 5. Prometheus config ──────────────────────────────────────────
 cat > "$APP_DIR/monitoring/prometheus/prometheus.yml" << 'PROMEOF'
 global:
   scrape_interval: 15s
@@ -125,7 +125,8 @@ scrape_configs:
       - targets: ["node-exporter:9100"]
 PROMEOF
 
-cat > "$APP_DIR/monitoring/grafana/provisioning/datasources/prometheus.yml" << 'GRAFEOF'
+# ── 6. Grafana datasource ─────────────────────────────────────────
+cat > "$APP_DIR/monitoring/grafana/provisioning/datasources/prometheus.yml" << 'DSEOF'
 apiVersion: 1
 datasources:
   - name: Prometheus
@@ -135,9 +136,10 @@ datasources:
     isDefault: true
     jsonData:
       timeInterval: "15s"
-GRAFEOF
+DSEOF
 
-cat > "$APP_DIR/monitoring/grafana/provisioning/dashboards/dashboard.yml" << 'GRAFEOF'
+# ── 7. Grafana dashboard provider ─────────────────────────────────
+cat > "$APP_DIR/monitoring/grafana/provisioning/dashboards/dashboard.yml" << 'DBPEOF'
 apiVersion: 1
 providers:
   - name: "default"
@@ -146,147 +148,101 @@ providers:
     type: file
     options:
       path: /etc/grafana/provisioning/dashboards
+DBPEOF
 
-cat > "$APP_DIR/monitoring/grafana/provisioning/dashboards/fastapi-dashboard.json" << 'DASHEOF'
-{
+# ── 8. Grafana dashboard JSON ─────────────────────────────────────
+python3 << 'PYDASH'
+import json, os
+
+dashboard = {
   "uid": "fastapi-monitoring",
   "title": "FastAPI Application Monitoring",
   "tags": ["fastapi", "python", "monitoring"],
   "timezone": "browser",
   "refresh": "15s",
-  "time": { "from": "now-1h", "to": "now" },
+  "time": {"from": "now-1h", "to": "now"},
+  "schemaVersion": 38,
   "panels": [
     {
-      "id": 1,
-      "title": "Request Rate (req/s)",
-      "type": "stat",
-      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
-      "targets": [
-        { "expr": "sum(rate(http_requests_total{job=\"fastapi-app\"}[1m]))", "legendFormat": "req/s" }
-      ],
-      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "color": { "mode": "thresholds" },
-          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] }
-        }
-      }
+      "id": 1, "title": "Request Rate (req/s)", "type": "stat",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": 'sum(rate(http_requests_total{job="fastapi-app"}[1m]))', "legendFormat": "req/s"}],
+      "options": {"colorMode": "background", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "fieldConfig": {"defaults": {"unit": "reqps", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": None}, {"color": "yellow", "value": 10}, {"color": "red", "value": 50}]}}}
     },
     {
-      "id": 2,
-      "title": "Error Rate (%)",
-      "type": "stat",
-      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
-      "targets": [
-        { "expr": "sum(rate(http_requests_total{job=\"fastapi-app\",status=~\"5..\"}[1m])) / sum(rate(http_requests_total{job=\"fastapi-app\"}[1m])) * 100", "legendFormat": "error %" }
-      ],
-      "options": { "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "color": { "mode": "thresholds" },
-          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] }
-        }
-      }
+      "id": 2, "title": "Error Rate (%)", "type": "stat",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": 'sum(rate(http_requests_total{job="fastapi-app",status=~"5.."}[1m])) / sum(rate(http_requests_total{job="fastapi-app"}[1m])) * 100', "legendFormat": "error %"}],
+      "options": {"colorMode": "background", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "fieldConfig": {"defaults": {"unit": "percent", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": None}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}}
     },
     {
-      "id": 3,
-      "title": "P95 Latency (ms)",
-      "type": "stat",
-      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
-      "targets": [
-        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"fastapi-app\"}[5m])) by (le)) * 1000", "legendFormat": "p95" }
-      ],
-      "options": { "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "color": { "mode": "thresholds" },
-          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 500 }, { "color": "red", "value": 1000 }] }
-        }
-      }
+      "id": 3, "title": "P95 Latency (ms)", "type": "stat",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": 'histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="fastapi-app"}[5m])) by (le)) * 1000', "legendFormat": "p95"}],
+      "options": {"colorMode": "background", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "fieldConfig": {"defaults": {"unit": "ms", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": None}, {"color": "yellow", "value": 500}, {"color": "red", "value": 1000}]}}}
     },
     {
-      "id": 4,
-      "title": "Active Users",
-      "type": "stat",
-      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
-      "targets": [
-        { "expr": "app_active_users", "legendFormat": "users" }
-      ],
-      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": { "defaults": { "unit": "short", "color": { "fixedColor": "blue", "mode": "fixed" } } }
+      "id": 4, "title": "Active Users", "type": "stat",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": "app_active_users", "legendFormat": "users"}],
+      "options": {"colorMode": "background", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"fixedColor": "blue", "mode": "fixed"}}}
     },
     {
-      "id": 5,
-      "title": "HTTP Request Rate by Endpoint",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
-      "targets": [
-        { "expr": "sum(rate(http_requests_total{job=\"fastapi-app\"}[1m])) by (handler)", "legendFormat": "{{handler}}" }
-      ],
-      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } } }
+      "id": 5, "title": "HTTP Request Rate by Endpoint", "type": "timeseries",
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "targets": [{"expr": 'sum(rate(http_requests_total{job="fastapi-app"}[1m])) by (handler)', "legendFormat": "{{handler}}"}],
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"lineWidth": 2}}}
     },
     {
-      "id": 6,
-      "title": "Response Status Codes",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
-      "targets": [
-        { "expr": "sum(rate(http_requests_total{job=\"fastapi-app\"}[1m])) by (status)", "legendFormat": "HTTP {{status}}" }
-      ],
-      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } } }
+      "id": 6, "title": "Response Status Codes", "type": "timeseries",
+      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+      "targets": [{"expr": 'sum(rate(http_requests_total{job="fastapi-app"}[1m])) by (status)', "legendFormat": "HTTP {{status}}"}],
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"lineWidth": 2}}}
     },
     {
-      "id": 7,
-      "title": "Request Duration Percentiles",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "id": 7, "title": "Request Duration Percentiles", "type": "timeseries",
+      "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
       "targets": [
-        { "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job=\"fastapi-app\"}[5m])) by (le)) * 1000", "legendFormat": "p50" },
-        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"fastapi-app\"}[5m])) by (le)) * 1000", "legendFormat": "p95" },
-        { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=\"fastapi-app\"}[5m])) by (le)) * 1000", "legendFormat": "p99" }
+        {"expr": 'histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job="fastapi-app"}[5m])) by (le)) * 1000', "legendFormat": "p50"},
+        {"expr": 'histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="fastapi-app"}[5m])) by (le)) * 1000', "legendFormat": "p95"},
+        {"expr": 'histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="fastapi-app"}[5m])) by (le)) * 1000', "legendFormat": "p99"}
       ],
-      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "lineWidth": 2 } } }
+      "fieldConfig": {"defaults": {"unit": "ms", "custom": {"lineWidth": 2}}}
     },
     {
-      "id": 8,
-      "title": "DB Query Duration by Operation",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
-      "targets": [
-        { "expr": "histogram_quantile(0.95, sum(rate(app_db_query_duration_seconds_bucket[5m])) by (le, operation)) * 1000", "legendFormat": "p95 {{operation}}" }
-      ],
-      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "lineWidth": 2 } } }
+      "id": 8, "title": "DB Query Duration by Operation", "type": "timeseries",
+      "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(app_db_query_duration_seconds_bucket[5m])) by (le, operation)) * 1000", "legendFormat": "p95 {{operation}}"}],
+      "fieldConfig": {"defaults": {"unit": "ms", "custom": {"lineWidth": 2}}}
     },
     {
-      "id": 9,
-      "title": "Orders Total by Status",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
-      "targets": [
-        { "expr": "sum(rate(app_orders_total[1m])) by (status)", "legendFormat": "{{status}}" }
-      ],
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2 } } }
+      "id": 9, "title": "Orders Total by Status", "type": "timeseries",
+      "gridPos": {"x": 0, "y": 20, "w": 12, "h": 8},
+      "targets": [{"expr": "sum(rate(app_orders_total[1m])) by (status)", "legendFormat": "{{status}}"}],
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2}}}
     },
     {
-      "id": 10,
-      "title": "Host CPU Usage (%)",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
-      "targets": [
-        { "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)", "legendFormat": "CPU %" }
-      ],
-      "fieldConfig": { "defaults": { "unit": "percent", "custom": { "lineWidth": 2 }, "color": { "fixedColor": "orange", "mode": "fixed" } } }
+      "id": 10, "title": "Host CPU Usage (%)", "type": "timeseries",
+      "gridPos": {"x": 12, "y": 20, "w": 12, "h": 8},
+      "targets": [{"expr": '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100)', "legendFormat": "CPU %"}],
+      "fieldConfig": {"defaults": {"unit": "percent", "custom": {"lineWidth": 2}, "color": {"fixedColor": "orange", "mode": "fixed"}}}
     }
-  ],
-  "schemaVersion": 38
+  ]
 }
-DASHEOF
 
-# ── 6. Write docker-compose.yml ───────────────────────────────────
-cat > "$APP_DIR/monitoring/docker-compose.yml" << 'COMPOSEEOF'
+path = "/opt/monitoring-stack/monitoring/grafana/provisioning/dashboards/fastapi-dashboard.json"
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w") as f:
+    json.dump(dashboard, f, indent=2)
+print("Dashboard JSON written.")
+PYDASH
+
+# ── 9. Write docker-compose.yml ───────────────────────────────────
+cat > "$APP_DIR/monitoring/docker-compose.yml" << 'COMPEOF'
 services:
   app:
     build:
@@ -355,9 +311,9 @@ volumes:
 networks:
   monitoring:
     driver: bridge
-COMPOSEEOF
+COMPEOF
 
-# ── 7. Read secrets from Secret Manager ──────────────────────────
+# ── 10. Read secrets from Secret Manager ──────────────────────────
 echo "Reading secrets from Secret Manager..."
 
 TOKEN=$(curl -s -H "Metadata-Flavor: Google" \
@@ -374,7 +330,7 @@ read_secret() {
 GRAFANA_ADMIN_USERNAME=$(read_secret "grafana-user")
 GRAFANA_ADMIN_PASSWORD=$(read_secret "grafana-password")
 
-# ── 8. Start the stack ────────────────────────────────────────────
+# ── 11. Start the stack ───────────────────────────────────────────
 cd "$APP_DIR/monitoring"
 GRAFANA_ADMIN_USERNAME="$GRAFANA_ADMIN_USERNAME" \
 GRAFANA_ADMIN_PASSWORD="$GRAFANA_ADMIN_PASSWORD" \
@@ -383,6 +339,6 @@ docker compose up -d --build
 echo "=== Stack started: $(date) ==="
 EXTERNAL_IP=$(curl -s -H "Metadata-Flavor: Google" \
   http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip)
-echo "Grafana:    http://$EXTERNAL_IP:3000  (admin / <secret>)"
+echo "Grafana:    http://$EXTERNAL_IP:3000"
 echo "Prometheus: http://$EXTERNAL_IP:9090"
 echo "FastAPI:    http://$EXTERNAL_IP:8000"
